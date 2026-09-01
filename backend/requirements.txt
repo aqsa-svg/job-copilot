@@ -1,0 +1,16 @@
+# Job Copilot — backend dependencies (all free)
+# Floor constraints (not exact pins) so pip resolves builds with wheels for your
+# Python version (e.g. 3.14). Tested with the versions noted in comments.
+fastapi>=0.115          # 0.115.x
+uvicorn[standard]>=0.34 # 0.34.x
+sqlmodel>=0.0.22        # 0.0.22+
+groq>=0.13              # Groq SDK
+python-dotenv>=1.0
+pydantic>=2.10          # v2
+python-multipart>=0.0.9 # file uploads (multipart/form-data)
+pypdf>=4.0              # extract text from uploaded PDFs
+python-docx>=1.1        # extract text from uploaded .docx files
+psycopg[binary]>=3.2    # Postgres driver (for hosted DB on Vercel/Neon; unused with local SQLite)
+bcrypt>=4.1             # password hashing for user accounts
+pyjwt>=2.8              # signed JWT access tokens for auth
+email-validator>=2.0    # validates account emails (pydantic EmailStr)

@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.db
+backend/jobcopilot.db
+
+# Env
+.env
+.env.local
+.env*.local
+
+# Node / Next
+node_modules/
+.next/
+out/
+dist/
+npm-debug.log*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Claude Code local state (may contain secrets in allowlisted commands)
+.claude/settings.local.json
+
+# Tooling caches
+.pytest_cache/
+*.tsbuildinfo
+
+# Vercel
+.vercel
