@@ -1,5 +1,13 @@
 # Job Copilot
 
+**A resume tailor that reorders and rewrites what you actually did to match a job — and tells you what's missing instead of quietly inventing it.**
+
+🔗 **Live API docs: [job-copilot-api.vercel.app/docs](https://job-copilot-api.vercel.app/docs)** — the FastAPI backend is deployed; the Next.js frontend runs locally (setup below).
+
+<!-- SCREENSHOT: the tailor view — resume preview beside match score + gaps list.
+     Replace with: ![Job Copilot tailor view](docs/screenshot-tailor.png) -->
+> 📸 *Screenshot placeholder — tailored resume preview beside the match score, gaps list, and what-changed summary.*
+
 Create and tailor **honest, ATS-friendly resumes** for **AI / ML / GenAI** roles —
 plus application-answer help and an editable screening-question bank.
 
@@ -155,15 +163,90 @@ retries transient errors (rate limits, timeouts, 5xx) and fails fast on auth err
 cd backend
 .venv\Scripts\Activate.ps1
 pip install -r requirements-dev.txt
-pytest -q          # 23 tests: endpoints, CRUD, normalizer, extractor, retry/backoff
+pytest -q          # 37 tests: endpoints, auth, CRUD, normalizer, extractor, retry/backoff
 ```
 
 **Frontend** — unit tests for the pure logic (ATS scoring + one-page fit):
 
 ```bash
 cd frontend
-npm test           # Vitest: lib/ats.test.ts + lib/fit.test.ts
+npm test           # 11 tests: lib/ats.test.ts (6) + lib/fit.test.ts (5)
 ```
+
+### Measured
+
+Run in clean environments — Python 3.11.0 venv and a fresh `npm install` — on 2026-09-02.
+
+| Measured | Value |
+|---|---|
+| Backend suite | **37 passing**, 6 files, 22.1s, no Groq key needed (LLM mocked) |
+| — `test_api.py` | 9 · endpoints and CRUD |
+| — `test_extract.py` | 9 · PDF/DOCX/TXT extraction |
+| — `test_auth.py` | 7 · JWT issue/verify |
+| — `test_ratelimit.py` | 5 · rate limiter |
+| — `test_normalize.py` | 4 · resume normalizer |
+| — `test_llm.py` | 3 · retry/backoff wrapper |
+| Frontend suite | **11 passing**, 2 files, 0.9s |
+| **Total** | **48 tests**, all passing, zero API keys required |
+| Source | 89 files — FastAPI backend + Next.js frontend |
+| Deployed API | `job-copilot-api.vercel.app/docs` → HTTP 200 |
+
+The entire suite runs without a Groq key: the LLM is mocked and the tests use a throwaway SQLite DB.
+
+**[TODO] ATS score validation.** The rule-based 0–100 score is the most checkable claim in the app and is currently unvalidated. *To measure:* run 20 resumes of known quality through it and report whether the ranking matches human judgement, plus the score distribution.
+
+**[TODO] Tailoring faithfulness.** The honesty guarantee is enforced by prompt plus a normalizer, not by a hard gate like the one in [attune](https://github.com/aqsa-svg/attune). *To measure:* run N=100 tailor operations against varied job descriptions and count how often the output introduces a skill, employer, date, or metric absent from the input profile. That number is the product's core claim.
+
+---
+
+## Architecture
+
+```
+  Profile intake  ---or---  paste/upload an existing resume (PDF/DOCX/TXT)
+        |                              |
+        |                              v
+        |                    app/extract.py  (pypdf / python-docx)
+        |                              |
+        +--------------+---------------+
+                       v
+              app/normalize.py   structured profile fields
+                       |
+                       v
+        +--------------------------------------------+
+        |  app/prompts.py + app/llm.py               |
+        |  Groq  llama-3.3-70b-versatile             |
+        |  retry/backoff: 3 attempts, exponential;   |
+        |  fails fast on auth errors                 |
+        |  The prompt may ONLY reorder, rephrase,    |
+        |  and emphasise the fields above.           |
+        +----------------------+---------------------+
+                               |
+                               v
+                    resume JSON  +  gaps[]  +  match score
+                               |
+        +----------------------+----------------------+
+        |                                             |
+        v                                             v
+  lib/ats.ts  rule-based ATS score 0-100        @react-pdf/renderer
+  no LLM, nothing leaves the machine            PDF / Markdown export
+  contact, sections, action verbs,                     |
+  quantified impact, [add metric]                      v
+  placeholders, bullet length,               lib/fit.ts  one-page density
+  JD keyword coverage                        scaling (no content cut)
+
+  Persistence: SQLite via SQLAlchemy | Auth: JWT (HS256) | Rate limiting: app/ratelimit.py
+```
+
+## Known limitations
+
+- **The frontend has 9 npm vulnerabilities, 2 critical.** `next@14.2.21` is affected by SSRF via improper middleware redirect handling, cache-key confusion and content injection in the Image Optimization API, and dev-server information exposure. `vitest` is the other critical (arbitrary file read when the UI server listens) but is dev-only, as are the `vite`/`esbuild`/`postcss`/`browserslist` findings. **Upgrading Next.js is the single most important fix in this repo.** Run `npm audit` to reproduce.
+- **Honesty is enforced by prompt and normalizer, not by a hard gate.** The instruction not to fabricate is in the prompt and the output is normalized against known fields, but there is no pure, unit-tested function with veto power the way there is in `attune`. Fabrication is discouraged structurally, not made unreachable — and the rate at which it still happens is unmeasured.
+- **`JWT_SECRET` has a known default.** `config.py` falls back to `dev-insecure-change-me` and documents that production must override it, but nothing fails fast if it doesn't. Any deployment that skips it has forgeable tokens.
+- **The ATS score is a heuristic, not a real ATS.** It is transparent and rule-based by design, but it models what ATS parsers generally reward — it does not replicate any specific vendor's system.
+- **The deployed backend is API-only.** `job-copilot-api.vercel.app` serves `/docs`; the root path returns 404 and the frontend is not deployed.
+- **SQLite by default.** Fine locally; a serverless deployment needs `DATABASE_URL` pointed at a real Postgres, since Vercel's filesystem is ephemeral.
+- **Groq free tier applies.** Rate limits are real, which is why the retry/backoff wrapper exists; heavy use will still hit them.
+- **Match score is LLM-produced**, so it is an estimate, not a measurement — unlike the ATS score beside it, which is deterministic.
 
 ---
 
